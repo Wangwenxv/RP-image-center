@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>生图调试台 · RP Image Center</title>
+    <link rel="stylesheet" href="/studio-assets/studio.css">
+    <script src="/studio-assets/studio.js" defer></script>
+</head>
+<body>
+    <header class="masthead">
+        <span class="focus-mark" aria-hidden="true"></span>
+        <div><p class="product">RP IMAGE CENTER</p><h1>生图调试台</h1></div>
+        <p id="connection" class="connection" role="status">正在连接本机服务</p>
+    </header>
+
+    <main class="workspace">
+        <form id="generator" class="controls" autocomplete="off">
+            <div class="section-head"><h2>生成设置</h2><span id="workflow-label" class="pill">读取工作流</span></div>
+            <label class="field">模型<select id="model" required></select></label>
+            <label class="field">提示词
+                <textarea id="prompt" rows="5" maxlength="6000" required placeholder="描述主体、动作、机位和光线。有参考图时可以用「第1张」指定用途。"></textarea>
+            </label>
+            <button id="example" type="button" class="text-button">填入自拍示例</button>
+
+            <fieldset class="references">
+                <legend>参考图 <span id="reference-count" class="muted"></span></legend>
+                <label id="dropzone" class="dropzone" for="files">
+                    <span class="add-sign" aria-hidden="true">＋</span>
+                    <span><strong>添加或拖入图片</strong><small>逐张选用途，留空即可文生图</small></span>
+                </label>
+                <input id="files" class="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" multiple>
+                <p id="file-error" class="error" role="alert" hidden></p>
+                <ul id="reference-list" class="reference-list"></ul>
+            </fieldset>
+
+            <div class="settings">
+                <label class="field">画幅
+                    <select id="size"><option value="512x512">512 × 512</option><option value="768x896" selected>768 × 896</option><option value="896x1152">896 × 1152</option><option value="1024x1024">1024 × 1024</option><option value="1152x896">1152 × 896</option><option value="auto">跟随工作流</option><option value="custom">自定义</option></select>
+                </label>
+                <div id="custom-size" class="size-row" hidden>
+                    <label class="field">宽<input id="width" type="number" min="256" max="99999" step="32" value="768"></label>
+                    <span aria-hidden="true">×</span>
+                    <label class="field">高<input id="height" type="number" min="256" max="99999" step="32" value="896"></label>
+                </div>
+                <div class="field"><label for="seed">种子</label><div class="seed-row"><input id="seed" type="number" min="0" max="9007199254740991" step="1" placeholder="自动生成"><button id="random-seed" type="button" class="secondary">换种子</button></div></div>
+                <label id="character-control" class="slider" hidden><span>角色 LoRA <output id="character-value" for="character-strength">0.70</output></span>
+                    <input id="character-strength" type="range" min="0" max="1" step="0.01" value="0.7">
+                </label>
+                <label id="gh-control" class="slider"><span>GH 一致性 LoRA <output id="gh-value" for="gh-strength">0.70</output></span>
+                    <input id="gh-strength" type="range" min="0" max="1" step="0.01" value="0.7" disabled>
+                </label>
+                <p id="sampling-label" class="muted sampling"></p>
+            </div>
+            <div class="submit-row"><button id="submit" class="primary" type="submit" disabled>生成图片</button><button id="cancel" class="secondary" type="button" hidden>取消</button><button id="resume" class="secondary" type="button" hidden>恢复任务</button></div>
+            <p id="job-status" class="job-status" role="status"></p>
+            <progress id="progress" hidden aria-label="生成进度"></progress>
+            <p id="job-error" class="error" role="alert" hidden></p>
+        </form>
+
+        <section class="review" aria-labelledby="review-heading">
+            <div class="review-toolbar">
+                <div><h2 id="review-heading">结果对照</h2><p class="muted">选中记录放入 A / B，按原始像素查看细节</p></div>
+                <div class="zoom" role="group" aria-label="预览缩放"><button type="button" id="fit" aria-pressed="true">适应</button><button type="button" id="actual" aria-pressed="false">100%</button></div>
+            </div>
+            <div id="stage" class="stage">
+                <article class="pane" id="pane-a" aria-label="结果 A"></article>
+                <article class="pane" id="pane-b" aria-label="结果 B"></article>
+            </div>
+            <div class="history-heading"><h2>最近任务</h2><button id="refresh" type="button" class="text-button">刷新记录</button></div>
+            <p id="history-status" class="muted" role="status">正在读取记录</p>
+            <ul id="history" class="history"></ul>
+        </section>
+    </main>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "backend": "auto",
+  "port": 7865,
+  "native_port": 7866,
+  "reference_megapixels": 1.0,
+  "reference_total_megapixels": 2.4,
+  "max_output_pixels": 1600000,
+  "max_references": 10,
+  "queue_size": 8,
+  "timeout_seconds": 1800,
+  "native_start_timeout": 300,
+  "prefix_cache_type": "q8_0",
+  "prefix_cache_enabled": true,
+  "encoder_on_cpu": false,
+  "vae_on_cpu": false,
+  "params_backend": "auto",
+  "max_vram_gib": 5.5,
+  "memory_retry": true,
+  "start_ram_gib": 10.0,
+  "reserve_ram_gib": 4.0,
+  "cpu_threads": 8,
+  "idle_shutdown_seconds": 45
+}

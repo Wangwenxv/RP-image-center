@@ -1,0 +1,10 @@
+.venv/
+runtime/
+logs/
+outputs/
+qwen2.1-turbo/*.safetensors
+qwen2.1-turbo/*.gguf
+__pycache__/
+.pytest_cache/
+*.pyc
+config.local.json
