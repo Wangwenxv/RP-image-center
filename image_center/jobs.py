@@ -96,7 +96,8 @@ class JobManager:
         records = {}
         if self.database.is_file():
             with self.connect() as db:
-                rows = db.execute("SELECT state FROM jobs ORDER BY created DESC LIMIT ?", (-1 if limit is None else limit,))
+                rows = db.execute("""SELECT state FROM jobs WHERE json_extract(state, '$.status') <> 'deleted'
+                                  ORDER BY created DESC LIMIT ?""", (-1 if limit is None else limit,))
                 for row in rows:
                     record = json.loads(row[0])
                     records[record["id"]] = record
@@ -157,7 +158,7 @@ class JobManager:
         self.queue.put_nowait(job)
         return job
 
-    def get(self, identifier):
+    def get(self, identifier, *, include_deleted=False):
         if identifier in self.jobs:
             return self.jobs[identifier].snapshot()
         if not identifier.startswith("img_") or len(identifier) != 36 or any(c not in "0123456789abcdef" for c in identifier[4:]):
@@ -166,7 +167,10 @@ class JobManager:
             with self.connect() as db:
                 row = db.execute("SELECT state FROM jobs WHERE id = ?", (identifier,)).fetchone()
             if row:
-                return json.loads(row[0])
+                record = json.loads(row[0])
+                if record["status"] == "deleted" and not include_deleted:
+                    raise KeyError(identifier)
+                return record
         filename = self.settings.outputs_dir / identifier / "state.json"
         try:
             record = json.loads(filename.read_text(encoding="utf-8"))
@@ -175,6 +179,16 @@ class JobManager:
             return record
         except (FileNotFoundError, ValueError) as error:
             raise KeyError(identifier) from error
+
+    def delete_image(self, identifier):
+        record = self.get(identifier, include_deleted=True)
+        if record["status"] not in {"completed", "deleted"} or identifier in self.jobs:
+            raise ValueError("Only completed images can be deleted")
+        # Keep a deletion record so legacy galleries and idempotent requests cannot restore the image.
+        if record["status"] == "completed":
+            self.save({**record, "status": "deleted", "phase": "deleted", "result_url": None, "image_url": None})
+        (self.settings.outputs_dir / f"{identifier}.png").unlink(missing_ok=True)
+        (self.settings.outputs_dir / identifier / "image.png").unlink(missing_ok=True)
 
     def cancel(self, identifier):
         if identifier not in self.jobs:

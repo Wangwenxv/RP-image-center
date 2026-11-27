@@ -55,26 +55,30 @@ class NativeBackend:
         self.client = httpx.AsyncClient(base_url=self.settings.native_url, timeout=30, trust_env=False)
 
     def executable(self):
+        windows = os.name == "nt"
+        filename = "sd-server.exe" if windows else "sd-server"
         kinds = ["cuda", "vulkan"] if self.settings.backend == "auto" else [self.settings.backend]
         if self.low_memory and self.settings.backend == "auto":
             kinds.reverse()
         for kind in kinds:
             directory = self.settings.root / "runtime" / kind
-            matches = list(directory.rglob("sd-server.exe"))
-            # CUDA archives and their shared runtime must both have been installed.
-            if kind == "cuda" and not list(directory.rglob("cudart64*.dll")):
+            if windows and kind == "cuda" and not any(directory.rglob("cudart64*.dll")):
                 continue
-            if matches:
-                self.kind = kind
-                return matches[0]
-        raise RuntimeError("Native runtime missing. Run scripts/install_native.py; CUDA requires both cuda and cudart assets")
+            for executable in directory.rglob(filename):
+                if executable.is_file() and (windows or os.access(executable, os.X_OK)):
+                    self.kind = kind
+                    return executable
+        if windows:
+            raise RuntimeError("Native runtime missing. Run scripts/install_native.py; CUDA requires both cuda and cudart assets")
+        raise RuntimeError("Native runtime missing. Run bash scripts/install_native_linux.sh for CUDA")
 
     def command(self):
         executable = self.executable()
         environment = os.environ.copy()
-        dll_dirs = {str(item.parent) for item in executable.parent.rglob("*.dll")}
-        dll_dirs.update(str(item.parent) for item in (self.settings.root / "runtime" / self.kind).rglob("cudart64*.dll"))
-        environment["PATH"] = os.pathsep.join(sorted(dll_dirs)) + os.pathsep + environment.get("PATH", "")
+        if os.name == "nt":
+            dll_dirs = {str(item.parent) for item in executable.parent.rglob("*.dll")}
+            dll_dirs.update(str(item.parent) for item in (self.settings.root / "runtime" / self.kind).rglob("cudart64*.dll"))
+            environment["PATH"] = os.pathsep.join(sorted(dll_dirs)) + os.pathsep + environment.get("PATH", "")
         flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         listing = subprocess.run([str(executable), "--list-devices"], capture_output=True, text=True,
                                  errors="replace", env=environment, creationflags=flags, timeout=45)
@@ -88,7 +92,7 @@ class NativeBackend:
             raise RuntimeError(f"No NVIDIA {self.kind} compute device found: {devices[-1500:]}")
         self.device = candidates[0]
         budget = min(self.RETRY_VRAM_GIB, self.settings.max_vram_gib) if self.low_memory else self.settings.max_vram_gib
-        vae_backend = "cpu" if self.settings.vae_on_cpu or self.low_memory else self.device
+        vae_backend = "cpu" if self.settings.vae_on_cpu else self.device
         command = [str(executable), "--listen-ip", "127.0.0.1", "--listen-port", str(self.settings.native_port),
                    "--diffusion-model", str(self.workflow.diffusion), "--llm", str(self.workflow.encoder),
                    "--vae", str(self.workflow.vae), "--lora-model-dir", str(self.settings.root / "runtime" / "model-links"),

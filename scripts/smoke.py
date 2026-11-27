@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
 from pathlib import Path
 import subprocess
 import time
@@ -23,7 +24,8 @@ if args.prompt_file: args.prompt = Path(args.prompt_file).read_text(encoding="ut
 def gpu_memory():
     try:
         raw = subprocess.check_output(["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
-                                      timeout=5, text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
+                                      timeout=5, text=True,
+                                      creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0).strip()
         return max(int(line) for line in raw.splitlines())
     except Exception: return None
 refs = []

@@ -219,14 +219,12 @@ def compile_prompt(prompt: str, roles: list[str]):
         if role not in PURPOSES:
             raise ValueError(f"Unknown reference role: {role}")
     text = re.sub(r"第([1-9]\d*)张", lambda match: f"<image{match[1]}>", prompt.strip())
-    names = {"identity": "人物身份参考，保留稳定面部特征，当前造型按本轮要求",
+    names = {"identity": "只参考脸部轮廓和五官，不参考原图的耳饰、妆发、衣着或背景",
              "clothing": "只参考服装款式、颜色、图案与材质", "background": "只参考环境布局",
              "pose": "只参考动作与姿态", "style": "只参考视觉风格", "object": "只参考指定物品",
              "reference": "按本轮提示指定用途参考"}
     instructions = "；".join(f"<image{i+1}>：{names[role]}" for i, role in enumerate(roles))
-    if "identity" in roles:
-        instructions += f"。人物主要面部依据是<image{roles.index('identity')+1}>，非identity图不定义本人面孔"
-    return text + "\n【实际输入图像顺序与用途】" + instructions + "。输出地点、动作、衣着和机位按本轮画面要求。"
+    return text + "\n" + instructions + "。"
 
 def parse_strength(value, default, field):
     if value is None:

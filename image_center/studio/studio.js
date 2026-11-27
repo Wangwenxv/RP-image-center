@@ -1,7 +1,7 @@
 'use strict';
 
 const $ = id => document.getElementById(id);
-const roles = { reference: '通用参考', identity: '人物身份', clothing: '服装', background: '背景',
+const roles = { reference: '通用参考', identity: '人物身份（仅脸部）', clothing: '服装', background: '背景',
     pose: '姿势', style: '画面风格', object: '道具' };
 const phases = { queued: '排队中', waiting: '等待引擎', loading: '加载模型', preparing: '准备输入',
     conditioning: '编码提示词和参考图', condition: '编码提示词和参考图', vae_encode: '编码参考图',
@@ -12,8 +12,10 @@ const samplePrompt = '一位年轻成年女性在宿舍窗边拍日常手机自�
 const MiB = 1024 * 1024;
 const references = [];
 const slots = { a: null, b: null };
+const deleting = new Set();
 let workflow;
 let history = [];
+let historyRequest = 0;
 let busy = false;
 let activeJob = null;
 const jobStorageKey = 'rp-image-center-active-job';
@@ -139,6 +141,17 @@ function centerPixels(viewport) {
     viewport.scrollLeft = (viewport.scrollWidth - viewport.clientWidth) / 2;
 }
 
+function deleteButton(job) {
+    const button = make('button', '🗑︎', 'delete-result');
+    button.type = 'button';
+    button.dataset.deleteJob = job.id;
+    button.title = '删除图片';
+    button.setAttribute('aria-label', job.seed >= 0 ? `删除种子 ${job.seed} 的图片` : '删除图片');
+    button.disabled = deleting.has(job.id);
+    button.addEventListener('click', () => void deleteResult(job));
+    return button;
+}
+
 function renderSlot(slot) {
     const job = slots[slot];
     const pane = $(`pane-${slot}`);
@@ -148,6 +161,8 @@ function renderSlot(slot) {
     info.title = info.textContent;
     header.append(make('span', label, 'pane-badge'), info);
     const viewport = make('div', '', 'pane-viewport');
+    const picture = make('div', '', 'result-picture');
+    picture.append(viewport);
     if (job) {
         const download = make('a', '下载 PNG');
         download.href = job.image_url;
@@ -163,10 +178,11 @@ function renderSlot(slot) {
         viewport.tabIndex = 0;
         viewport.setAttribute('aria-label', `结果 ${label} 的图片预览`);
         viewport.append(image);
+        picture.append(deleteButton(job));
     } else {
         viewport.append(make('p', `从下方选择结果放入 ${label}`, 'pane-empty'));
     }
-    pane.replaceChildren(header, viewport);
+    pane.replaceChildren(header, picture);
 }
 
 function selectResult(slot, job) {
@@ -210,7 +226,7 @@ function renderHistory() {
         thumbnail.loading = 'lazy';
         thumbnail.src = job.image_url;
         thumbnail.alt = '';
-        details.append(make('p', resultLabel(job)), make('p', job.seed >= 0 ? `种子 ${job.seed}` : '自动种子', 'result-meta'));
+        details.append(make('p', resultLabel(job), 'result-summary'), make('p', job.seed >= 0 ? `种子 ${job.seed}` : '自动种子', 'result-meta'));
         for (const slot of ['a', 'b']) {
             const button = make('button', `放入 ${slot.toUpperCase()}`, 'secondary');
             button.type = 'button';
@@ -226,23 +242,52 @@ function renderHistory() {
             useSeed.addEventListener('click', () => { $('seed').value = job.seed; $('seed').focus(); });
             details.append(useSeed);
         }
-        item.append(thumbnail, details);
+        item.append(thumbnail, details, deleteButton(job));
         list.append(item);
     }
 }
 
+async function deleteResult(job) {
+    if (deleting.has(job.id) || !window.confirm('永久删除这张生成图片？')) return;
+    deleting.add(job.id);
+    showMessage($('history-error'), '');
+    const setDisabled = disabled => {
+        for (const button of document.querySelectorAll(`[data-delete-job="${job.id}"]`)) button.disabled = disabled;
+    };
+    setDisabled(true);
+    try {
+        await request(job.image_url, { method: 'DELETE' });
+        history = history.filter(record => record.id !== job.id);
+        for (const slot of ['a', 'b']) {
+            if (slots[slot]?.id !== job.id) continue;
+            slots[slot] = null;
+            renderSlot(slot);
+        }
+        renderHistory();
+        await refreshHistory();
+        $('refresh').focus();
+    } catch (error) {
+        showMessage($('history-error'), `删除失败。${error.message}`);
+    } finally {
+        deleting.delete(job.id);
+        setDisabled(false);
+    }
+}
+
 async function refreshHistory() {
+    const currentRequest = ++historyRequest;
     $('refresh').disabled = true;
     try {
         const data = await request('/v1/jobs');
+        if (currentRequest !== historyRequest) return;
         history = data.data.slice(0, 12);
         const latestImage = history.find(job => job.status === 'completed');
         if (!slots.a && latestImage) selectResult('a', latestImage);
         renderHistory();
     } catch (error) {
-        $('history-status').textContent = `读取记录失败。${error.message}`;
+        if (currentRequest === historyRequest) $('history-status').textContent = `读取记录失败。${error.message}`;
     } finally {
-        $('refresh').disabled = false;
+        if (currentRequest === historyRequest) $('refresh').disabled = false;
     }
 }
 

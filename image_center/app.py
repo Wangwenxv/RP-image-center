@@ -157,6 +157,10 @@ def create_app(settings=None, backend_factory=NativeBackend):
 
     @app.get("/v1/jobs/{identifier}")
     async def status(identifier: str, request: Request): return request.app.state.manager.get(identifier)
+    @app.delete("/v1/jobs/{identifier}/image")
+    async def delete_image(identifier: str, request: Request):
+        request.app.state.manager.delete_image(identifier)
+        return {"ok": True}
     @app.post("/v1/jobs/{identifier}/cancel")
     async def cancel(identifier: str, request: Request): return request.app.state.manager.cancel(identifier)
     @app.get("/v1/jobs/{identifier}/result")

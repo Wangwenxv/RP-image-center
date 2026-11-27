@@ -1,14 +1,73 @@
 import asyncio
+import os
 from types import SimpleNamespace
 
 import httpx
 import pytest
+import image_center.backend as backend_module
 from image_center.backend import NativeBackend, SystemMemoryError
 from image_center.workflow import ROOT, Settings, Workflow
 
-def test_auto_fit_is_not_disabled_and_nvidia_is_selected(monkeypatch):
+
+def test_linux_cuda_runtime_uses_extensionless_server_without_windows_dlls(tmp_path, monkeypatch):
+    settings = Settings(root=tmp_path, backend="cuda", max_vram_gib=20)
+    workflow = SimpleNamespace(settings=settings, diffusion="diffusion", encoder="encoder", vae="vae")
+    backend = NativeBackend(workflow)
+    server = tmp_path / "runtime" / "cuda" / "build" / "bin" / "sd-server"
+    server.parent.mkdir(parents=True)
+    server.touch(mode=0o755)
+    monkeypatch.setattr(backend_module, "os", SimpleNamespace(
+        name="posix", access=os.access, X_OK=os.X_OK, environ={"PATH": "/usr/bin"},
+    ))
+
+    def list_devices(command, **options):
+        assert command == [str(server), "--list-devices"]
+        assert options["creationflags"] == 0
+        return SimpleNamespace(stdout="CUDA0\tNVIDIA GeForce RTX 4090 D", stderr="")
+
+    monkeypatch.setattr(backend_module.subprocess, "run", list_devices)
+    command, environment = backend.command()
+    assert command[0] == str(server)
+    assert command[command.index("--max-vram") + 1] == "20"
+    assert backend.device == "cuda0"
+    assert environment["PATH"] == "/usr/bin"
+
+def test_windows_cuda_runtime_uses_exe_and_adds_dll_paths(tmp_path, monkeypatch):
+    settings = Settings(root=tmp_path, backend="cuda")
+    workflow = SimpleNamespace(settings=settings, diffusion="diffusion", encoder="encoder", vae="vae")
+    backend = NativeBackend(workflow)
+    runtime = tmp_path / "runtime" / "cuda"
+    server = runtime / "server" / "sd-server.exe"
+    cuda_dll = runtime / "cudart" / "cudart64_12.dll"
+    server.parent.mkdir(parents=True)
+    cuda_dll.parent.mkdir()
+    server.touch()
+    (server.parent / "ggml-cuda.dll").touch()
+    monkeypatch.setattr(backend_module, "os", SimpleNamespace(
+        name="nt", pathsep=";", environ={"PATH": "old-path"},
+    ))
+    monkeypatch.setattr(backend_module.subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    with pytest.raises(RuntimeError, match="cuda and cudart"):
+        backend.executable()
+    cuda_dll.touch()
+
+    def list_devices(command, **options):
+        assert command == [str(server), "--list-devices"]
+        assert options["creationflags"] == 0x08000000
+        return SimpleNamespace(stdout="CUDA0\tNVIDIA GeForce RTX 4060 Laptop GPU", stderr="")
+
+    monkeypatch.setattr(backend_module.subprocess, "run", list_devices)
+    command, environment = backend.command()
+    assert command[0] == str(server)
+    assert command[command.index("--backend") + 1] == "diffusion=cuda0,te=cuda0,vae=cuda0"
+    assert environment["PATH"].split(";") == sorted(map(str, (server.parent, cuda_dll.parent))) + ["old-path"]
+
+
+@pytest.mark.parametrize("low_memory", [False, True])
+def test_auto_fit_is_not_disabled_and_nvidia_is_selected(monkeypatch, low_memory):
     workflow = Workflow(Settings())
     backend = NativeBackend(workflow)
+    backend.low_memory = low_memory
     def exe():
         backend.kind = "vulkan"
         return ROOT / "runtime" / "vulkan" / "sd-server.exe"
@@ -19,6 +78,8 @@ def test_auto_fit_is_not_disabled_and_nvidia_is_selected(monkeypatch):
     assert "--params-backend" not in command
     assert command[command.index("--backend")+1] == "diffusion=vulkan1,te=vulkan1,vae=vulkan1"
     assert command[command.index("--auto-fit")+1] == "on"
+    assert command[command.index("--max-vram")+1] == ("5.0" if low_memory else "5.5")
+    assert ("--disable-prefetch" in command) == low_memory
     assert command[command.index("--model-args")+1] == "qwen_image_2_1_prefix_cache_type=q8_0,qwen_image_2_1_prefix_cache=true"
     assert "--type" not in command  # No implicit requantization of model weights.
 

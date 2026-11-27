@@ -118,14 +118,23 @@ progress { display: block; width: 100%; height: 9px; margin-top: 8px; accent-col
 .stage.actual .pane-viewport:has(img) { display: block; overflow: auto; }
 .stage.actual .pane-viewport img { width: auto; height: auto; max-width: none; }
 .pane-empty { color: var(--muted); background: #f8faff; border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; font-size: 12px; }
+.result-picture { position: relative; }
+.delete-result {
+    position: absolute; top: 8px; right: 8px; display: grid; place-items: center;
+    width: 32px; height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--paper); color: var(--muted); font: 18px/1 "Segoe UI Symbol", sans-serif;
+}
+.delete-result:hover:enabled { color: var(--danger); border-color: var(--danger); }
 
 .history-heading { margin: 22px 0 8px; }
 .history { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 8px; padding: 0; list-style: none; }
-.history li { display: grid; grid-template-columns: 47px minmax(0, 1fr); gap: 8px; align-items: center; min-width: 0; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 6px; }
+.history li { position: relative; display: grid; grid-template-columns: 47px minmax(0, 1fr); gap: 8px; align-items: center; min-width: 0; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 6px; }
 .history li.history-status-only { grid-template-columns: minmax(0, 1fr); overflow-wrap: anywhere; }
-.history img { width: 47px; height: 57px; object-fit: cover; border-radius: 4px; }
+.history img { display: block; width: 47px; height: 57px; object-fit: cover; border-radius: 4px; }
+.history .delete-result { top: 6px; right: 6px; width: 24px; height: 24px; font-size: 14px; }
 .history p { font-size: 11px; }
 .history .result-details { display: flex; flex-wrap: wrap; gap: 2px 6px; min-width: 0; }
+.history .result-summary { flex-basis: 100%; min-height: 24px; padding-inline-end: 30px; overflow-wrap: anywhere; }
 .history .result-details button { padding: 2px 7px; }
 .history button[aria-pressed="true"] { color: var(--accent); border-color: #b7ade5; background: var(--accent-soft); }
 .result-meta { flex-basis: 100%; color: var(--muted); font: 10px/1.4 var(--mono); }

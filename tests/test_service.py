@@ -63,6 +63,7 @@ def test_edit_and_t2i_routing_retains_reference_order(workflow):
     assert prepared[0][1] == (256, 256)
     assert prepared[1][1][0] < prepared[1][1][1]
     assert "<image1>" in body["prompt"] and "<image2>：只参考服装" in body["prompt"]
+    assert "<image1>：只参考脸部轮廓和五官，不参考原图的耳饰" in body["prompt"]
     assert len(body["ref_images"]) == 2 and roles == ["identity", "clothing"]
     t2i, _, _ = build_request(workflow, "宿舍浴室", [], [], "512x512")
     assert t2i["sample_params"]["sample_steps"] == 8
@@ -182,6 +183,32 @@ def test_api_invalid_input_never_submits_native(workflow, monkeypatch):
         assert client.post("/v1/jobs", json={"prompt": "bathroom", "image_data_urls": [], "image_urls": []}).status_code == 400
         assert client.get("/v1/jobs/../../secret").status_code == 404
         assert app.state.backend.submissions == []
+
+def test_delete_image_removes_pixels_and_excludes_modern_and_legacy_jobs_after_restart(workflow, monkeypatch):
+    monkeypatch.setattr("image_center.app.Workflow", lambda settings: workflow)
+    app = create_app(workflow.settings, FakeBackend)
+    with TestClient(app) as client:
+        result = client.post("/v1/images/generations", json={"prompt": "bathroom", "size": "256x256"}).json()
+        modern = result["job_id"]
+        legacy = "img_" + "a" * 32
+        output = workflow.settings.outputs_dir
+        (output / legacy).mkdir()
+        state = {"id": legacy, "created": time.time(), "status": "completed"}
+        (output / legacy / "state.json").write_text(json.dumps(state), encoding="utf-8")
+        (output / legacy / "image.png").write_bytes(png())
+        for identifier, path in [(modern, output / f"{modern}.png"), (legacy, output / legacy / "image.png")]:
+            url = f"/v1/jobs/{identifier}/image"
+            assert client.get(url).status_code == 200
+            assert client.delete(url).json() == {"ok": True}
+            assert client.delete(url).status_code == 200
+            assert client.get(url).status_code == 404
+            assert not path.exists()
+        assert client.get("/v1/jobs").json()["data"] == []
+    with TestClient(app) as client:
+        assert client.get("/v1/jobs").json()["data"] == []
+        for identifier in [modern, legacy]:
+            assert client.get(f"/v1/jobs/{identifier}").status_code == 404
+
 
 def test_cors_preflight(workflow, monkeypatch):
     monkeypatch.setattr("image_center.app.Workflow", lambda settings: workflow)
